@@ -60,7 +60,7 @@ void get_cpu_temp_str(char *buffer, size_t size) {
 void get_hostname_str(char *buffer, size_t size) {
     char hostname[64];
     if (gethostname(hostname, sizeof(hostname)) == 0) {
-        snprintf(buffer, size, "Host: %s", hostname);
+        snprintf(buffer, size, "%s", hostname);
     } else {
         snprintf(buffer, size, "Host: Unknown");
     }
@@ -92,7 +92,7 @@ void get_ip_str(char *buffer, size_t size) {
                  int s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in),
                                      host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
                  if (s == 0) {
-                     snprintf(buffer, size, "IP: %s", host);
+                     snprintf(buffer, size, "%s", host);
                      break; // Found one, stop looking
                  }
             }
@@ -110,15 +110,15 @@ void fill_info(const char *type, char *buffer, size_t size) {
     else snprintf(buffer, size, "%s", type); // Just print the literal string if unknown
 }
 
-// --- MAIN LOOP ---
-
 void do_monitor(int fd, const char *row0_type, const char *row1_type) {
-    char line0[17]; // 16 chars + null
+    char line0[17];
     char line1[17];
-    char full_msg[34]; // 32 chars + null + newline
+    // INCREASED SIZE: 16+1 + 16+1 + 1 (null) = 35 bytes minimum.
+    // We use 64 to be safe.
+    char full_msg[64];
 
     // Hide cursor for cleaner look
-    struct lcd_config cfg = {1, 0, 0}; 
+    struct lcd_config cfg = {1, 0, 0};
     ioctl(fd, LCD_IOCTL_SET_CONFIG, &cfg);
 
     printf("Starting monitor... (Press Ctrl+C to stop)\n");
@@ -129,13 +129,15 @@ void do_monitor(int fd, const char *row0_type, const char *row1_type) {
         fill_info(row0_type, line0, 17);
         fill_info(row1_type, line1, 17);
 
-        // 2. Clear Screen (Optional, but ensures clean slate)
+        // 2. Clear Screen
+        // This resets the state so the first write goes to the bottom,
+        // and the second write pushes it to the top.
         ioctl(fd, LCD_IOCTL_CLEAR);
 
-        // 3. Format Message: "Line1\nLine2"
-        // We rely on the driver's handling of '\n' to split rows
-        snprintf(full_msg, sizeof(full_msg), "%-16s\n%-16s", line0, line1);
-        
+        // 3. Format Message
+        // CHANGE: Added '\n' at the very end so the second line flushes too.
+        snprintf(full_msg, sizeof(full_msg), "%-16s\n%-16s\n", line0, line1);
+
         // 4. Write
         write(fd, full_msg, strlen(full_msg));
 
